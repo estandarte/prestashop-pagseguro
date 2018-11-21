@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<module>
+	<name>PagSeguro</name>
+	<displayName><![CDATA[Pag Seguro]]></displayName>
+	<version><![CDATA[0.1.0]]></version>
+	<description><![CDATA[Habilite o pagamento com PagSeguro em sua loja Prestashop!]]></description>
+	<author><![CDATA[Estandarte]]></author>
+	<tab><![CDATA[payments_gateways]]></tab>
+	<confirmUninstall><![CDATA[Tem certeza que quer desinstalar esse módulo?]]></confirmUninstall>
+	<is_configurable>1</is_configurable>
+	<need_instance>1</need_instance>
+</module>
