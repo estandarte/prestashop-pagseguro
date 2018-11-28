@@ -1,0 +1,11 @@
+{
+    "require": {
+        "pagseguro/pagseguro-php-sdk": "^5.0"
+    },
+    "type": "prestashop-module",
+    "autoload": {
+      "psr-4": {
+        "Estandarte\\Pagseguro\\": "classes/"
+      }
+    }
+}
