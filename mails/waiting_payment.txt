@@ -1,0 +1,9 @@
+Olá {firstname} {lastname},
+
+Pedido {order_name} - Pagamento em análise.
+
+O pedido {order_name} foi processado com sucesso.
+
+Você pode ver o seu pedido na seção "Histórico de Pedidos" da sua conta clicando em "Minha conta" no nosso site.
+
+{shop_name} - {shop_url}

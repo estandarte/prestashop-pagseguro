@@ -10,16 +10,18 @@ if (!defined('_PS_VERSION_')) {
     exit;
 }
 
+use PrestaShop\PrestaShop\Core\Payment\PaymentOption;
+
 include dirname(__FILE__).'/vendor/autoload.php';
 include dirname(__FILE__).'/classes/EnvioFacil.php';
 
-class PagSeguro extends PaymentModule
+class pagseguro extends PaymentModule
 {
     protected $config_form = false;
     public $id_carrier;
     public function __construct()
     {
-        $this->name = 'PagSeguro';
+        $this->name = 'pagseguro';
         $this->tab = 'payments_gateways';
         $this->version = '0.1.0';
         $this->author = 'Estandarte';
@@ -37,9 +39,9 @@ class PagSeguro extends PaymentModule
 
         $this->confirmUninstall = $this->l('Tem certeza que quer desinstalar esse módulo?');
 
-        $this->limited_countries = array('BR');
+        // $this->limited_countries = array('BR');
 
-        $this->limited_currencies = array('BRL');
+        // $this->limited_currencies = array('BRL');
 
         $this->ps_versions_compliancy = array('min' => '1.7', 'max' => _PS_VERSION_);
     }
@@ -55,14 +57,7 @@ class PagSeguro extends PaymentModule
             return false;
         }
 
-        $iso_code = Country::getIsoById(Configuration::get('PS_COUNTRY_DEFAULT'));
-
-        if ( in_array($iso_code, $this->limited_countries) == false )
-        {
-            $this->_errors[] = $this->l('This module is not available in your country');
-            return false;
-        }
-
+        $this->createStates();
         Configuration::updateValue('PAGSEGURO_ACTIVATE', false);
 
         return parent::install() &&
@@ -73,17 +68,20 @@ class PagSeguro extends PaymentModule
             $this->registerHook('backOfficeHeader') &&
             $this->registerHook('payment') &&
             $this->registerHook('paymentReturn') &&
-            $this->registerHook('displayPayment');
+            $this->registerHook('displayPayment')
+        ;
     }
 
     public function uninstall()
     {
         Configuration::deleteByName('PAGSEGURO_ACTIVATE');
+        Configuration::deleteByName('PAGSEGURO_SANDBOX');
         Configuration::deleteByName('PAGSEGURO_ACCOUNT_EMAIL');
         Configuration::deleteByName('PAGSEGURO_ACCOUNT_PUBLICKEY');
         Configuration::deleteByName('PAGSEGURO_CARRIER');
         Configuration::deleteByName('PAGSEGURO_CARRIER_0');
         Configuration::deleteByName('PAGSEGURO_CARRIER_1');
+        Configuration::deleteByName('PAGSEGURO_CARRIER_CEP');
         Configuration::deleteByName('PAGSEGURO_CARRIER_CEP');
 
         return parent::uninstall();
@@ -136,6 +134,26 @@ class PagSeguro extends PaymentModule
         return $helper->generateForm(array($this->getConfigForm()));
     }
 
+    protected function generateForm()
+    {
+        $months = [];
+        for ($i = 1; $i <= 12; $i++) {
+            $months[] = sprintf("%02d", $i);
+        }
+
+        $years = [];
+        for ($i = 0; $i <= 10; $i++) {
+            $years[] = date("Y", strtotime("+".$i." years"));
+        }
+
+        $this->context->smarty->assign([
+            "action" => $this->context->link->getModuleLink($this->name, "validation", [], true),
+            "months" => $months,
+            "years" => $years,
+        ]);
+
+        return $this->context->smarty->fetch("module:paymentexample/views/templates/front/payment_form.tpl");
+    }
     /**
      * Create the structure of your form.
      */
@@ -162,6 +180,25 @@ class PagSeguro extends PaymentModule
                             ),
                             array(
                                 'id' => 'active_off',
+                                'value' => false,
+                                'label' => $this->l('Disabled')
+                            )
+                        ),
+                    ),
+                    array(
+                        'type' => 'switch',
+                        'label' => $this->l('Sandbox'),
+                        'name' => 'PAGSEGURO_SANDBOX',
+                        'is_bool' => true,
+                        'desc' => $this->l('PagSeguro test environment'),
+                        'values' => array(
+                            array(
+                                'id' => 'sandbox_on',
+                                'value' => true,
+                                'label' => $this->l('Enabled')
+                            ),
+                            array(
+                                'id' => 'sandbox_off',
                                 'value' => false,
                                 'label' => $this->l('Disabled')
                             )
@@ -219,13 +256,14 @@ class PagSeguro extends PaymentModule
      */
     protected function getConfigFormValues()
     {
-        return array(
+        return [
             'PAGSEGURO_ACTIVATE' => Configuration::get('PAGSEGURO_ACTIVATE', true),
-            'PAGSEGURO_ACCOUNT_EMAIL' => Configuration::get('PAGSEGURO_ACCOUNT_EMAIL', TRUE),
+            'PAGSEGURO_SANDBOX' => Configuration::get('PAGSEGURO_SANDBOX', true),
+            'PAGSEGURO_ACCOUNT_EMAIL' => Configuration::get('PAGSEGURO_ACCOUNT_EMAIL', true),
             'PAGSEGURO_ACCOUNT_PUBLICKEY' => Configuration::get('PAGSEGURO_ACCOUNT_PUBLICKEY', null),
             'PAGSEGURO_CARRIER' => Configuration::get('PAGSEGURO_CARRIER', false),
             'PAGSEGURO_CARRIER_CEP' => Configuration::get('PAGSEGURO_CARRIER_CEP', null),
-        );
+        ];
     }
 
     /**
@@ -235,13 +273,13 @@ class PagSeguro extends PaymentModule
     {
         $form_values = $this->getConfigFormValues();
 
+        if (Tools::getValue("PAGSEGURO_CARRIER") && !Configuration::get('PAGSEGURO_CARRIER', false)) {
+            $this->installCarrier();
+        } elseif (!Tools::getValue("PAGSEGURO_CARRIER")) {
+            $this->removeCarrier();
+        }
         foreach (array_keys($form_values) as $key) {
             Configuration::updateValue($key, Tools::getValue($key));
-        }
-        if (Tools::getValue("PAGSEGURO_CARRIER")){
-            $this->installCarrier();
-        } else {
-            $this->removeCarrier();
         }
     }
 
@@ -271,16 +309,45 @@ class PagSeguro extends PaymentModule
      */
     public function hookPayment($params)
     {
+        throw new Exception('Boom!');
+        die;
         $currency_id = $params['cart']->id_currency;
         $currency = new Currency((int)$currency_id);
 
-        if (!in_array($currency->iso_code, $this->limited_currencies) || !Configuration::get('PAGSEGURO_ACTIVATE')) {
-            return false;
-        }
+        // if (!in_array($currency->iso_code, $this->limited_currencies) || !Configuration::get('PAGSEGURO_ACTIVATE')) {
+        //     return false;
+        // }
 
         $this->smarty->assign('module_dir', $this->_path);
 
         return $this->display(__FILE__, 'views/templates/hook/payment.tpl');
+    }
+    public function hookpaymentOptions($params)
+
+        //Configuration::get('PAGSEGURO_ACTIVATE', true)
+        // if (!$this->active) {
+    {
+        //     return;
+        // }
+        // if (!$this->checkCurrency($params["cart"])) {
+        //     return;
+        // }
+        $payment_options = [
+            $this->getExternalPaymentOption()
+        ];
+        // print_r($payment_options);die;
+        return $payment_options;
+    }
+    public function getExternalPaymentOption()
+    {
+        $externalOption = new PaymentOption();
+        $externalOption->setCallToActionText($this->l('Pay with'))
+           ->setAction($this->context->link->getModuleLink($this->name, "pay", [], true))
+           ->setModuleName($this->name)
+           ->setLogo(Media::getMediaPath(_PS_MODULE_DIR_.$this->name."/logo.png"))
+        ;
+
+        return $externalOption;
     }
 
     /**
@@ -288,6 +355,7 @@ class PagSeguro extends PaymentModule
      */
     public function hookPaymentReturn($params)
     {
+        throw new \Exception("hookPaymentReturn", 1);
         if ($this->active == false) {
             return;
         }
@@ -310,8 +378,11 @@ class PagSeguro extends PaymentModule
 
     public function hookDisplayPayment()
     {
+        throw new \Exception("hookDisplayPayment", 1);
+
         /* Place your code here. */
     }
+
     public function installCarrier()
     {
         $custom_text = 'PagSeguro Envio Fácil';
@@ -438,10 +509,11 @@ class PagSeguro extends PaymentModule
 
         return false;
     }
-    private function removeCarrier(){
+    private function removeCarrier()
+    {
         foreach (['PAGSEGURO_CARRIER_0','PAGSEGURO_CARRIER_1'] as $value) {
             $id = Configuration::get($value, false);
-            if($id){
+            if ($id) {
                 $carrier = new Carrier($id);
                 $carrier->deleted = true;
                 $carrier->active = false;
@@ -449,7 +521,7 @@ class PagSeguro extends PaymentModule
             }
         }
     }
-    public function getPackageShippingCost($params, $shipping_cost,  $products)
+    public function getPackageShippingCost($params, $shipping_cost, $products)
     {
         $carriers = [
             Configuration::get('PAGSEGURO_CARRIER_0') => 'PAC',
@@ -458,7 +530,7 @@ class PagSeguro extends PaymentModule
         if (!in_array($this->id_carrier, array_keys($carriers))) {
             return false;
         }
-        if ($retorno = $this->calculate($params, $carriers[$this->id_carrier])){
+        if ($retorno = $this->calculate($params, $carriers[$this->id_carrier])) {
             return (float)$retorno;
         }
 
@@ -466,7 +538,6 @@ class PagSeguro extends PaymentModule
     }
     private function calculate($params, $type)
     {
-
         $cart = Context::getContext()->cart;
         $price_total = 0;
 
@@ -489,7 +560,7 @@ class PagSeguro extends PaymentModule
             return false;
         }
         foreach ($options as $id => $option) {
-            if ( $type == $option->serviceType) {
+            if ($type == $option->serviceType) {
                 return $option->totalValue;
             }
         }
@@ -554,4 +625,149 @@ class PagSeguro extends PaymentModule
             'weight' => $weight//(int)Tools::ps_round($weight, 0)
         );
     }
+    /**
+ * Create the states, we need to check if doens`t exists.
+ */
+    private function createStates()
+    {
+        $order_states = [
+            [
+                '#ccfbff',
+                $this->l('Waiting for payment', [], 'Modules.Pagseugro.Admin'),
+                'waiting_payment',
+            ], [
+                '#ccfbff',
+                $this->l('Under Review', [], 'Modules.Pagseugro.Admin'),
+                'under_review',
+            ], [
+                '#c9fecd',
+                $this->l('Paid', [], 'Modules.Pagseguro.Admin'),
+                'paid',
+            ], [
+                '#c9fecd',
+                $this->l('Available', [], 'Modules.Pagseguro.Admin'),
+                'available',
+            ], [
+                '#c28566',
+                $this->l('In mediation', [], 'Modules.Pagseguro.Admin'),
+                'in_mediation',
+            ], [
+                '#fec9c9',
+                $this->l('Refunded', [], 'Modules.Pagseguro.Admin'),
+                'refunded',
+            ], [
+                '#fec9c9',
+                $this->l('Canceled', [], 'Modules.Pagseguro.Admin'),
+                'canceled',
+            ]
+
+        ];
+
+        foreach ($order_states as $key => $value) {
+            if (!is_null($this->orderStateAvailable(Configuration::get('PAGSEGURO_STATUS_'. ($key + 1))))) {
+                continue;
+            } else {
+                $order_state = new OrderState();
+                $order_state->name = [];
+                $order_state->module_name = $this->name;
+                $order_state->send_email = false;
+                $order_state->color = $value[0];
+                $order_state->hidden = false;
+                $order_state->delivery = false;
+                $order_state->logable = true;
+                $order_state->invoice = false;
+                $order_state->paid = false;
+
+                if ($value[2] == 'paid' || $value[2] == 'refunded') {
+                    // $order_state->send_email = false;
+                    $order_state->invoice = true;
+                }
+                if ($value[2] == 'paid') {
+                    // $order_state->send_email = false;
+                    $order_state->paid = true;
+                }
+
+                $order_state->name = [];
+                $order_state->template = [];
+
+                foreach (Language::getLanguages(false) as $language) {
+                    $order_state->name[(int) $language['id_lang']] = $value[1];
+                    $order_state->template[$language['id_lang']] = $value[2];
+
+                    // if ($value[2] == 'in_process' || $value[2] == 'pending' || $value[2] == 'charged_back' ||
+                    //  $value[2] == 'in_mediation') {
+                        $this->populateEmail($language['iso_code'], $value[2], 'html');
+                        $this->populateEmail($language['iso_code'], $value[2], 'txt');
+                    // }
+                }
+
+                if (!$order_state->add()) {
+                    return false;
+                }
+
+                $file = _PS_ROOT_DIR_.'/img/os/'.(int) $order_state->id.'.gif';
+                copy((dirname(__file__).'/views/img/logo-180x41.gif'), $file);
+
+                Configuration::updateValue('PAGSEGURO_STATUS_'.($key + 1), $order_state->id);
+            }
+        }
+        // if (!is_null($this->orderStateAvailable(Configuration::get('MERCADOPAGO_STATUS_11')))) {
+        //     $update = Db::getInstance()->update(
+        //     'order_state',
+        //     array(
+        //         'logable' => 1,
+        //         'send_email' => 0
+        //     ),
+        //     'module_name = "mercadopago" and id_order_state = '.Configuration::get('MERCADOPAGO_STATUS_11')
+        // );
+        // }
+        //
+        // if (!is_null($this->orderStateAvailable(Configuration::get('MERCADOPAGO_STATUS_1')))) {
+        //     $update = Db::getInstance()->update(
+        //     'order_state',
+        //     array(
+        //         'logable' => 1,
+        //         'paid' => 1,
+        //         'send_email' => 1,
+        //         'invoice' => 1,
+        //         'pdf_invoice' => 1
+        //
+        //     ),
+        //     'module_name = "mercadopago" and id_order_state = '.Configuration::get('MERCADOPAGO_STATUS_1')
+        // );
+        // }
+        return true;
+    }
+    /**
+     * Check if the state exist before create another one.
+     *
+     * @param int $id_order_state
+     *                            State ID
+     *
+     * @return bool availability
+     */
+    public static function orderStateAvailable($id_order_state)
+    {
+        $result = Db::getInstance(_PS_USE_SQL_SLAVE_)->getRow(
+            '
+            SELECT `id_order_state` AS ok
+            FROM `'._DB_PREFIX_.'order_state`
+            WHERE `id_order_state` = '.(int) $id_order_state
+        );
+        return $result['ok'];
+    }
+
+    private function populateEmail($lang, $name, $extension)
+    {
+        if (!file_exists(_PS_MAIL_DIR_.$lang)) {
+            mkdir(_PS_MAIL_DIR_.$lang, 0777, true);
+        }
+        $new_template = _PS_MAIL_DIR_.$lang.'/'.$name.'.'.$extension;
+
+        $template = dirname(__file__).'/mails/'.$name.'.'.$extension;
+        if (!file_exists($new_template) && file_exists($template)) {
+            copy($template, $new_template);
+        }
+    }
+
 }
