@@ -2,7 +2,7 @@
 <module>
     <name>pagseguro</name>
     <displayName><![CDATA[Pag Seguro]]></displayName>
-    <version><![CDATA[0.1.0]]></version>
+    <version><![CDATA[0.1.1]]></version>
     <description><![CDATA[Habilite o pagamento com PagSeguro em sua loja Prestashop!]]></description>
     <author><![CDATA[Estandarte]]></author>
     <tab><![CDATA[payments_gateways]]></tab>

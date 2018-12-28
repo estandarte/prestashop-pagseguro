@@ -71,7 +71,7 @@ class PagSeguroPayModuleFrontController extends ModuleFrontController
         // Validate order
         $this->module->validateOrder(
             $cart->id,
-            Configuration::get('PAGSEGURO_STATUS_0'),
+            Configuration::get('PAGSEGURO_STATUS_1'),
             (float)$cart->getOrderTotal(true, Cart::BOTH),
             $this->module->displayName,
             NULL,
