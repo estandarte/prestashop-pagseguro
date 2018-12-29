@@ -33,7 +33,6 @@ class PagSeguroPayModuleFrontController extends ModuleFrontController
             );
         }
         $payment->setCurrency("BRL");
-        $payment->setReference('PS' . $cart->id);
         $payment->setRedirectUrl($this->getReturnUrl());
         $payment->setNotificationUrl($this->getNotificationUrl());
 
@@ -64,10 +63,6 @@ class PagSeguroPayModuleFrontController extends ModuleFrontController
 
         $this->configure();
 
-        $url = $payment->register(
-            \PagSeguro\Configuration\Configure::getAccountCredentials()
-        );
-
         // Validate order
         $this->module->validateOrder(
             $cart->id,
@@ -79,6 +74,11 @@ class PagSeguroPayModuleFrontController extends ModuleFrontController
             (int)$this->context->currency->id,
             false,
             $customer['secure_key']
+        );
+        $order = new Order(Order::getOrderByCartId((int) $cart->id));
+        $payment->setReference('PS-' . $order->getUniqReference());
+        $url = $payment->register(
+            \PagSeguro\Configuration\Configure::getAccountCredentials()
         );
         Tools::redirectLink($url);
     }

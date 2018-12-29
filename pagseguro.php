@@ -23,7 +23,7 @@ class pagseguro extends PaymentModule
     {
         $this->name = 'pagseguro';
         $this->tab = 'payments_gateways';
-        $this->version = '0.1.1';
+        $this->version = '0.1.3';
         $this->author = 'Estandarte';
         $this->need_instance = 0;
 
